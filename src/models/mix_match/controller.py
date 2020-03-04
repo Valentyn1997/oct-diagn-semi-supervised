@@ -5,6 +5,8 @@ from cortex._lib import exp
 from torch.backends import cudnn
 import torch.nn.functional as F
 import numpy as np
+from torchsummary import summary
+from torchvision.transforms import Resize
 
 from src.models.mix_match.wideresnet import WideResNet
 from src.models.mix_match.utils import interleave
@@ -127,6 +129,8 @@ class MixMatchController(ModelPlugin):
 
         self.nets.classifier = WideResNet(num_classes=self.get_dims('data.targets'))
         self.nets.ema_classifier = WideResNet(num_classes=self.get_dims('data.targets'))
+        print(summary(self.nets.classifier, (1, 512, 512)))
+
         for param in self.nets.ema_classifier.parameters():
             param.detach_()
 
@@ -151,7 +155,9 @@ class MixMatchController(ModelPlugin):
 
     def visualize(self):
         inputs = self.inputs('data.images')
-        self.add_image(inputs, name='Ground Truth')
+        targets = self.inputs('data.targets')
+
+        self.add_image(F.adaptive_avg_pool2d(inputs, (64, 64)), name='Input', labels=targets)
 
 
 class SemiLoss:
