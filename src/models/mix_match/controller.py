@@ -109,8 +109,8 @@ class MixMatchController(ModelPlugin):
             # Top-k accuracy
             labeled = 1 - targets_l.eq(-1).long()
             top1 = accuracy(outputs_l, targets_l, labeled, top=1)
-            top5 = accuracy(outputs_l, targets_l, labeled, top=5)
-            self.add_results(acc_top1=top1, acc_top5=top5)
+            # top5 = accuracy(outputs_l, targets_l, labeled, top=5)
+            self.add_results(acc_top1=top1)
 
     def build(self, lambda_u: float = 75, ema_decay: float = 0.999, log_to_mlflow=True, *args, **kwargs):
         """
