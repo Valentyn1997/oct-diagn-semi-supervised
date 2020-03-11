@@ -61,7 +61,7 @@ class WideResNet(nn.Module):
         self.block2 = NetworkBlock(n, nChannels[1], nChannels[2], block, 2, dropRate)
         self.block3 = NetworkBlock(n, nChannels[2], nChannels[3], block, 2, dropRate)
         self.block4 = NetworkBlock(n, nChannels[3], nChannels[4], block, 2, dropRate)
-        self.block4 = NetworkBlock(n, nChannels[3], nChannels[4], block, 2, dropRate)
+        # self.block4 = NetworkBlock(n, nChannels[3], nChannels[4], block, 2, dropRate)
         # global average pooling and classifier
         self.bn1 = nn.BatchNorm2d(nChannels[-1], momentum=0.001)
         self.relu = nn.LeakyReLU(negative_slope=0.1, inplace=True)
