@@ -178,9 +178,9 @@ class SSLDatasetPlugin(TorchvisionDatasetPlugin):
                 normalize = [(0.5,), (0.5,)]
                 scale = (0, 1)
             elif source == 'ImageFolder':
-                extra_init_train_transform = transforms.Grayscale()
-                extra_init_test_transform = transforms.Grayscale()
-                normalize = [(0,), (1,)]
+                # extra_init_train_transform = transforms.Grayscale()
+                # extra_init_test_transform = transforms.Grayscale()
+                normalize = [(0.485, 0.456, 0.406), (0.229, 0.224, 0.225)]
                 scale = (0, 1)
             else:
                 normalize = [(0.5, 0.5, 0.5), (0.5, 0.5, 0.5)]
@@ -214,8 +214,10 @@ class SSLDatasetPlugin(TorchvisionDatasetPlugin):
 
         train_set, test_set = handler(Dataset, data_path, transform=train_transform, test_transform=test_transform,
                                       labeled_only=labeled_only)
+        # Removing labels for Semi-Supervised setup
+        if n_labels is not None:
+            remove_labels(train_set, n_labels)
 
-        remove_labels(train_set, n_labels)
         dim_images = train_set[0][0].size()
 
         labels = None

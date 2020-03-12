@@ -6,17 +6,16 @@ from torch.backends import cudnn
 import torch.nn.functional as F
 import numpy as np
 from torchsummary import summary
-from torchvision.transforms import Resize
 
-from src.models.mix_match.wideresnet import WideResNet
 from src.models.mix_match.utils import interleave
-from src.models.utils import accuracy, MlflowLogger
+from src.models.utils import accuracy, MlflowLogger, WeightEMA
+from src.models.wideresnet import WideResNet_50_2
 
 
 class MixMatchController(ModelPlugin):
     defaults = dict(
-        data=dict(batch_size=dict(train=64, test=64), inputs=dict(inputs='images'), shuffle=True, skip_last_batch=True),
-        train=dict(save_on_lowest='losses.classifier', epochs=1024*16, archive_every=1000),
+        data=dict(batch_size=dict(train=32, test=32), inputs=dict(inputs='images'), shuffle=True, skip_last_batch=True),
+        train=dict(save_on_lowest='losses.classifier', epochs=1024*16, archive_every=2000),
         optimizer=dict(optimizer='Adam', learning_rate=0.002, single_optimizer=True)
     )
 
@@ -114,7 +113,7 @@ class MixMatchController(ModelPlugin):
             # top5 = accuracy(outputs_l, targets_l, labeled, top=5)
             self.add_results(acc_top1=top1)
 
-    def build(self, lambda_u: float = 75, ema_decay: float = 0.999, log_to_mlflow=True, *args, **kwargs):
+    def build(self, lambda_u: float = 25, ema_decay: float = 0.999, log_to_mlflow=True, *args, **kwargs):
         """
         :param log_to_mlflow: Log run to mlflow
         :param ema_decay: Exponential moving average decay rate
@@ -127,9 +126,9 @@ class MixMatchController(ModelPlugin):
         self.data.next()
         input_shape = self.get_dims('data.images')
 
-        self.nets.classifier = WideResNet(num_classes=self.get_dims('data.targets'))
-        self.nets.ema_classifier = WideResNet(num_classes=self.get_dims('data.targets'))
-        print(summary(self.nets.classifier, (1, 512, 512)))
+        self.nets.classifier = WideResNet_50_2(num_classes=self.get_dims('data.targets'), pretrained=False)
+        self.nets.ema_classifier = WideResNet_50_2(num_classes=self.get_dims('data.targets'), pretrained=False)
+        print(summary(self.nets.classifier, input_shape))
 
         for param in self.nets.ema_classifier.parameters():
             param.detach_()
@@ -157,6 +156,10 @@ class MixMatchController(ModelPlugin):
         inputs = self.inputs('data.images')
         targets = self.inputs('data.targets')
 
+        inputs = inputs[:, :1, :, :]
+        inputs *= 0.229
+        inputs += 0.485
+
         self.add_image(F.adaptive_avg_pool2d(inputs, (64, 64)), name='Input', labels=targets)
 
 
@@ -180,25 +183,3 @@ class SemiLoss:
         Lu = torch.mean((probs_u - targets_u) ** 2)
 
         return Lx, Lu, self.lambda_u * SemiLoss.linear_rampup(epoch, self.epochs)
-
-
-class WeightEMA(object):
-    def __init__(self, model, ema_model, alpha=0.999):
-        self.model = model
-        self.ema_model = ema_model
-        self.alpha = alpha
-        self.params = list(model.state_dict().values())
-        self.ema_params = list(ema_model.state_dict().values())
-        self.wd = 0.02 * exp.ARGS['optimizer']['learning_rate']
-
-        for param, ema_param in zip(self.params, self.ema_params):
-            param.data.copy_(ema_param.data)
-
-    def step(self):
-        one_minus_alpha = 1.0 - self.alpha
-        for param, ema_param in zip(self.params, self.ema_params):
-            if len(param.shape) > 0:
-                ema_param.mul_(self.alpha)
-                ema_param.add_(param * one_minus_alpha)
-                # customized weight decay
-                param.mul_(1 - self.wd)

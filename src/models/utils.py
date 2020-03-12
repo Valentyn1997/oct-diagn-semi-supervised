@@ -53,6 +53,28 @@ class MlflowLogger:
         mlflow.log_metrics(metrics, step=exp.INFO['epoch'])
 
 
+class WeightEMA(object):
+    def __init__(self, model, ema_model, alpha=0.999):
+        self.model = model
+        self.ema_model = ema_model
+        self.alpha = alpha
+        self.params = list(model.state_dict().values())
+        self.ema_params = list(ema_model.state_dict().values())
+        self.wd = 0.02 * exp.ARGS['optimizer']['learning_rate']
+
+        for param, ema_param in zip(self.params, self.ema_params):
+            param.data.copy_(ema_param.data)
+
+    def step(self):
+        one_minus_alpha = 1.0 - self.alpha
+        for param, ema_param in zip(self.params, self.ema_params):
+            if len(param.shape) > 0:
+                ema_param.mul_(self.alpha)
+                ema_param.add_(param * one_minus_alpha)
+                # customized weight decay
+                param.mul_(1 - self.wd)
+
+
 def accuracy(outputs, targets, labeled, top: int = 1, is_argmax=False):
     """Computes the accuracy.
 
