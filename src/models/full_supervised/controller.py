@@ -69,7 +69,6 @@ class FullSupervisedController(ModelPlugin):
             mlflow.log_param('pretrained', pretrained)
             mlflow.log_param('ema_decay', ema_decay)
 
-
     def eval_loop(self):
         super().eval_loop()
         if MlflowLogger.log_to_mlflow:
