@@ -16,16 +16,11 @@ from src.models.wideresnet import WideResNet_50_2
 class MixMatchController(ModelPlugin):
     defaults = dict(
         data=dict(batch_size=dict(train=32, test=32), inputs=dict(inputs='images'), shuffle=True, skip_last_batch=True),
-        train=dict(save_on_lowest='losses.classifier', epochs=1024*16, archive_every=2000),
+        train=dict(save_on_lowest=None, epochs=1024*16, archive_every=None),
         optimizer=dict(optimizer='Adam', learning_rate=0.002, single_optimizer=True)
     )
 
-    def __init__(self, varying_hyperparams=None):
-        super().__init__()
-        self.varying_hyperparams = varying_hyperparams
-
     # TODO Not exactly the same batches, as in MixMatch
-
     def optimizer_step(self, retain_graph=False):
         super().optimizer_step(retain_graph)
         self.ema_optimizer.step()
@@ -125,15 +120,15 @@ class MixMatchController(ModelPlugin):
         :param ema_decay: Exponential moving average decay rate
         :param lambda_u: Unlabeled loss weight
         """
-        if self.varying_hyperparams is not None:
-            # Setting hyperparameters
-            exp.ARGS['optimizer']['learning_rate'] = self.varying_hyperparams['o.learning_rate']
-            exp.ARGS['train']['epochs'] = self.varying_hyperparams['t.epochs']
-            exp.ARGS['model']['T'] = self.varying_hyperparams['T']
-            exp.ARGS['model']['alpha'] = self.varying_hyperparams['alpha']
-            exp.ARGS['model']['ema_decay'] = self.varying_hyperparams['ema_decay']
-            exp.ARGS['model']['lambda_u'] = self.varying_hyperparams['lambda_u']
-            exp.ARGS['model']['run_hash'] = calculate_hash(self.varying_hyperparams)
+        # if self.varying_hyperparams is not None:
+        #     # Setting hyperparameters
+        #     exp.ARGS['optimizer']['learning_rate'] = self.varying_hyperparams['o.learning_rate']
+        #     exp.ARGS['train']['epochs'] = self.varying_hyperparams['t.epochs']
+        #     exp.ARGS['model']['T'] = self.varying_hyperparams['T']
+        #     exp.ARGS['model']['alpha'] = self.varying_hyperparams['alpha']
+        #     exp.ARGS['model']['ema_decay'] = self.varying_hyperparams['ema_decay']
+        #     exp.ARGS['model']['lambda_u'] = self.varying_hyperparams['lambda_u']
+        #     exp.ARGS['model']['run_hash'] = calculate_hash(self.varying_hyperparams)
 
         cudnn.benchmark = True
 

@@ -12,12 +12,13 @@ class MlflowLogger:
     log_to_mlflow = False
 
     @staticmethod
-    def start_run(experiment_name):
+    def start_run(experiment_name, checkpoints_to_mlflow=False):
         MlflowLogger.log_to_mlflow = True
         MlflowLogger.experiment_name = experiment_name
         mlflow.set_experiment(experiment_name)
         MlflowLogger.run = mlflow.start_run()
-        exp.setup_out_dir(mlflow.get_artifact_uri(), None, None)
+        if checkpoints_to_mlflow:
+            exp.setup_out_dir(mlflow.get_artifact_uri(), None, None)
 
     @staticmethod
     def end_run():
