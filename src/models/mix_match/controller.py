@@ -113,23 +113,15 @@ class MixMatchController(ModelPlugin):
             # top5 = accuracy(outputs_l, targets_l, labeled, top=5)
             self.add_results(acc_top1=top1)
 
-    def build(self, lambda_u: float = 25, ema_decay: float = 0.999, run_hash=None, log_to_mlflow=True, *args, **kwargs):
+    def build(self, lambda_u: float = 25.0, ema_decay: float = 0.999, run_hash=None, log_to_mlflow=True,
+              type_of_run=None, *args, **kwargs):
         """
+        :param type_of_run: Type of run to log to mlflow (as a tag): hyperparam_search, varying_number_of_labels, None
         :param run_hash: MD5 hash of hyperparameters string for effective hyperparameter search
         :param log_to_mlflow: Log run to mlflow
         :param ema_decay: Exponential moving average decay rate
         :param lambda_u: Unlabeled loss weight
         """
-        # if self.varying_hyperparams is not None:
-        #     # Setting hyperparameters
-        #     exp.ARGS['optimizer']['learning_rate'] = self.varying_hyperparams['o.learning_rate']
-        #     exp.ARGS['train']['epochs'] = self.varying_hyperparams['t.epochs']
-        #     exp.ARGS['model']['T'] = self.varying_hyperparams['T']
-        #     exp.ARGS['model']['alpha'] = self.varying_hyperparams['alpha']
-        #     exp.ARGS['model']['ema_decay'] = self.varying_hyperparams['ema_decay']
-        #     exp.ARGS['model']['lambda_u'] = self.varying_hyperparams['lambda_u']
-        #     exp.ARGS['model']['run_hash'] = calculate_hash(self.varying_hyperparams)
-
         cudnn.benchmark = True
 
         # Reset the data iterator and draw batch to perform shape inference.
@@ -152,6 +144,7 @@ class MixMatchController(ModelPlugin):
             MlflowLogger.start_run(exp.INFO['name'] + '_MixMatch')
             MlflowLogger.log_basic_run_params(input_shape)
             MlflowLogger.log_ssl_parameters()
+            mlflow.set_tag('type_of_run', type_of_run)
             mlflow.log_param('ema_decay', exp.ARGS['model']['ema_decay'])
             mlflow.log_param('lambda_u', exp.ARGS['model']['lambda_u'])
             mlflow.log_param('T', exp.ARGS['model']['T'])
