@@ -208,8 +208,8 @@ class SSLDatasetPlugin(TorchvisionDatasetPlugin):
                 data_path = self.copy_to_local_path(data_path)
             handler = self._handle
 
-        train_set, test_set = handler(Dataset, data_path, transform=train_transform, test_transform=test_transform,
-                                      labeled_only=labeled_only)
+        train_set, val_set, test_set = handler(Dataset, data_path, transform=train_transform, test_transform=test_transform,
+                                               labeled_only=labeled_only)
         # Removing labels for Semi-Supervised setup
         if n_labels is not None:
             remove_labels(train_set, n_labels)
@@ -233,7 +233,8 @@ class SSLDatasetPlugin(TorchvisionDatasetPlugin):
         dims = dict(images=dim_images, targets=dim_l)
         input_names = ['images', 'targets', 'index']
 
-        self.add_dataset(source, data=dict(train=train_set, test=test_set), input_names=input_names, dims=dims, scale=scale)
+        self.add_dataset(source, data=dict(train=train_set, val=val_set, test=test_set),
+                         input_names=input_names, dims=dims, scale=scale)
 
         if split_labelled_and_unlabelled:
             DATA_HANDLER.batch_size['train'] //= 2
@@ -247,9 +248,9 @@ class SSLDatasetPlugin(TorchvisionDatasetPlugin):
             setattr(train_set_unlabeled, labels_attr, list(labels[labels == -1]))
             train_set_unlabeled.transform = TransformTwice(train_set_unlabeled.transform)
 
-            self.add_dataset(source + '_l', data=dict(train=train_set_labeled, test=test_set),
+            self.add_dataset(source + '_l', data=dict(train=train_set_labeled, val=val_set, test=test_set),
                              input_names=input_names, dims=dims, scale=scale)
-            self.add_dataset(source + '_u', data=dict(train=train_set_unlabeled, test=test_set),
+            self.add_dataset(source + '_u', data=dict(train=train_set_unlabeled, val=val_set, test=test_set),
                              input_names=input_names, dims=dims, scale=scale)
 
             DATA_HANDLER.add_dataset(DATASETS, source + '_l', 'data_l', self, n_workers=4, shuffle=True)
@@ -262,8 +263,9 @@ class SSLDatasetPlugin(TorchvisionDatasetPlugin):
 
     def _handle_ImageFolder(self, Dataset, data_path, transform=None, test_transform=None, **kwargs):
         train_set = Dataset(f'{data_path}/train', transform=transform)
+        val_set = Dataset(f'{data_path}/val', transform=test_transform)
         test_set = Dataset(f'{data_path}/test', transform=test_transform)
-        return train_set, test_set
+        return train_set, val_set, test_set
 
 
 # Removing all registered DatasetPlugins

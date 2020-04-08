@@ -21,12 +21,7 @@ class FullSupervisedController(ModelPlugin):
         super().optimizer_step(retain_graph)
         self.ema_optimizer.step()
 
-    def routine(self, T: float = 0.5, alpha: float = 0.75, *args, **kwargs):
-        """
-        :param alpha: Parameter of beta distribution
-        :param T: Sharpening temperature
-        """
-
+    def routine(self, *args, **kwargs):
         targets = self.inputs('data.targets')
         inputs = self.inputs('data.images')
 
@@ -42,8 +37,9 @@ class FullSupervisedController(ModelPlugin):
             top1 = accuracy(outputs, targets, labeled, top=1)
             self.add_results(acc_top1=top1)
 
-    def build(self, pretrained=False, ema_decay: float = 0.999, log_to_mlflow=True, *args, **kwargs):
+    def build(self, pretrained=False, freeze_layers=False, ema_decay: float = 0.999, log_to_mlflow=True, *args, **kwargs):
         """
+        :param freeze_layers: Freeze all the layers except FC
         :param pretrained: Use pretrained on ImageNet encoder, freezing all the layers except last
         :param ema_decay: Exponential moving average decay rate
         :param log_to_mlflow: Log run to mlflow

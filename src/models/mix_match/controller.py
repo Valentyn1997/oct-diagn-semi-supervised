@@ -9,15 +9,15 @@ from torchsummary import summary
 
 from src.models.mix_match.utils import calculate_hash
 from src.models.mix_match.utils import interleave
-from src.models.utils import accuracy, MlflowLogger, WeightEMA
+from src.models.utils import accuracy, MlflowLogger, WeightEMA, EarlyStopping
 from src.models.wideresnet import WideResNet_50_2
 
 
 class MixMatchController(ModelPlugin):
     defaults = dict(
-        data=dict(batch_size=dict(train=32, test=32), inputs=dict(inputs='images'), shuffle=True, skip_last_batch=True),
-        train=dict(save_on_lowest=None, epochs=1024*16, archive_every=None),
-        optimizer=dict(optimizer='Adam', learning_rate=0.002, single_optimizer=True)
+        data=dict(batch_size=dict(train=32, val=32, test=32), inputs=dict(inputs='images'), shuffle=True, skip_last_batch=True),
+        train=dict(save_on_lowest=None, epochs=500, archive_every=None),
+        optimizer=dict(optimizer='Adam', learning_rate=0.01, single_optimizer=True)
     )
 
     # TODO Not exactly the same batches, as in MixMatch
@@ -25,12 +25,12 @@ class MixMatchController(ModelPlugin):
         super().optimizer_step(retain_graph)
         self.ema_optimizer.step()
 
-    def routine(self, T: float = 0.5, alpha: float = 0.75, *args, **kwargs):
+    def routine(self, T: float = 0.5, alpha: float = 0.9, *args, **kwargs):
         """
         :param alpha: Parameter of beta distribution
         :param T: Sharpening temperature
         """
-        if self.data.mode == 'test':
+        if self.data.mode == 'test' or self.data.mode == 'val':
             targets_l = self.inputs('data.targets')
             inputs_l = self.inputs('data.images')
 
@@ -113,9 +113,10 @@ class MixMatchController(ModelPlugin):
             # top5 = accuracy(outputs_l, targets_l, labeled, top=5)
             self.add_results(acc_top1=top1)
 
-    def build(self, lambda_u: float = 25.0, ema_decay: float = 0.999, run_hash=None, log_to_mlflow=True,
-              type_of_run=None, *args, **kwargs):
+    def build(self, lambda_u: float = 12.5, ema_decay: float = 0.999, early_stopping_patience: int = 250,
+              run_hash=None, log_to_mlflow=True, type_of_run=None, *args, **kwargs):
         """
+        :param early_stopping_patience: Patience for early stopping, number of epochs
         :param type_of_run: Type of run to log to mlflow (as a tag): hyperparam_search, varying_number_of_labels, None
         :param run_hash: MD5 hash of hyperparameters string for effective hyperparameter search
         :param log_to_mlflow: Log run to mlflow
@@ -137,6 +138,7 @@ class MixMatchController(ModelPlugin):
             param.detach_()
 
         self.ema_optimizer = WeightEMA(self.nets.classifier, self.nets.ema_classifier, alpha=exp.ARGS['model']['ema_decay'])
+        self.early_stopping = EarlyStopping(patience=exp.ARGS['model']['early_stopping_patience'])
         self.loss = SemiLoss(exp.ARGS['model']['lambda_u'], exp.ARGS['train']['epochs'])
         self.criterion = torch.nn.CrossEntropyLoss()
 
@@ -150,12 +152,26 @@ class MixMatchController(ModelPlugin):
             mlflow.log_param('T', exp.ARGS['model']['T'])
             mlflow.log_param('alpha', exp.ARGS['model']['alpha'])
             mlflow.log_param('run_hash', exp.ARGS['model']['run_hash'])
+            mlflow.log_param('early_stopping_patience', exp.ARGS['model']['early_stopping_patience'])
 
     def eval_loop(self):
+        # Evaluation
+        self.data.reset(mode='val')
         super().eval_loop()
-        if MlflowLogger.log_to_mlflow:
-            MlflowLogger.log_all_metrics(mode='train')
-            MlflowLogger.log_all_metrics(mode='test')
+        self.data.reset(mode='test')
+        super().eval_loop()
+
+        # Early stopping
+        self.early_stopping.on_epoch_end()
+
+        # Mlflow Logging
+        MlflowLogger.log_all_metrics('train', self.early_stopping.stopped_epoch)
+        MlflowLogger.log_all_metrics('val', self.early_stopping.stopped_epoch)
+        MlflowLogger.log_all_metrics('test', self.early_stopping.stopped_epoch)
+
+        if self.early_stopping.stopped_epoch is not None:
+            mlflow.log_metric('stopped_epoch', self.early_stopping.stopped_epoch, step=exp.INFO['epoch'])
+            exp.INFO['epoch'] = exp.ARGS['train']['epochs']
 
     def visualize(self):
         inputs = self.inputs('data.images')

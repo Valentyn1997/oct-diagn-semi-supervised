@@ -32,6 +32,7 @@ class MlflowLogger:
             mlflow.log_param('output_shape', output_shape)
         mlflow.log_param('optimizer', exp.ARGS['optimizer']['optimizer'])
         mlflow.log_param('lr', exp.ARGS['optimizer']['learning_rate'])
+        mlflow.log_param('weight_decay', exp.ARGS['optimizer']['weight_decay'])
         mlflow.log_param('epochs', exp.ARGS['train']['epochs'])
         mlflow.log_param('normalize', exp.ARGS['data']['data']['normalize'])
         mlflow.log_param('shuffle', exp.ARGS['data']['shuffle'])
@@ -44,14 +45,19 @@ class MlflowLogger:
         mlflow.log_param('augmentation', exp.ARGS['data']['data'])
 
     @staticmethod
-    def log_all_metrics(mode='test'):
-        losses = exp.RESULTS.pull_all(mode, 'losses', epoch=exp.INFO['epoch'])
-        other_metrics = exp.RESULTS.pull_all(mode, 'results', epoch=exp.INFO['epoch'])
-        metrics = {}
-        for k, v in {**losses, **other_metrics}.items():
-            suffix = '' if mode == 'test' else '_train'
-            metrics[remove_wrong_characters(k) + suffix] = v
-        mlflow.log_metrics(metrics, step=exp.INFO['epoch'])
+    def log_all_metrics(mode='test', epoch_to_log=None):
+        if MlflowLogger.log_to_mlflow:
+            epoch_to_log = exp.INFO['epoch'] if epoch_to_log is None else epoch_to_log
+            losses = exp.RESULTS.pull_all(mode, 'losses', epoch=epoch_to_log)
+            other_metrics = exp.RESULTS.pull_all(mode, 'results', epoch=epoch_to_log)
+            metrics = {}
+            for k, v in {**losses, **other_metrics}.items():
+                if mode == 'test':
+                    suffix = ''
+                else:
+                    suffix = f'_{mode}'
+                metrics[remove_wrong_characters(k) + suffix] = v
+            mlflow.log_metrics(metrics, step=exp.INFO['epoch'])
 
 
 class WeightEMA(object):
@@ -74,6 +80,31 @@ class WeightEMA(object):
                 ema_param.add_(param * one_minus_alpha)
                 # customized weight decay
                 param.mul_(1 - self.wd)
+
+
+class EarlyStopping(object):
+    def __init__(self, monitor='acc_top1', mode='val', min_delta=0.5, patience=5):
+        self.monitor = monitor
+        self.mode = mode
+        self.min_delta = min_delta
+        self.patience = patience
+        self.wait = 0
+        self.best_value = 0.0
+        self.stopped_epoch = None
+
+    def on_epoch_end(self):
+        current_value = exp.RESULTS.pull_all(self.mode, 'results', epoch=exp.INFO['epoch'])[self.monitor]
+        if current_value is None:
+            pass
+        else:
+            if (current_value - self.best_value) > self.min_delta:
+                self.best_value = current_value
+                self.wait = 1
+            else:
+                if self.wait >= self.patience:
+                    self.stopped_epoch = exp.INFO['epoch']
+                self.wait += 1
+
 
 
 def accuracy(outputs, targets, labeled, top: int = 1, is_argmax=False):
