@@ -218,10 +218,10 @@ class SSLDatasetPlugin(TorchvisionDatasetPlugin):
 
         labels = None
         if hasattr(train_set, 'labels'):
-            labels = train_set.labels
+            labels = np.array(train_set.labels)
             labels_attr = 'labels'
         elif hasattr(train_set, 'targets'):
-            labels = train_set.targets
+            labels = np.array(train_set.targets)
             labels_attr = 'targets'
 
         uniques = sorted(np.unique(labels).tolist())
@@ -263,6 +263,10 @@ class SSLDatasetPlugin(TorchvisionDatasetPlugin):
 
     def _handle_ImageFolder(self, Dataset, data_path, transform=None, test_transform=None, **kwargs):
         train_set = Dataset(f'{data_path}/train', transform=transform)
+        if 'UNL' in train_set.classes:
+            train_set.targets = np.array(train_set.targets)
+            train_set.targets[train_set.targets == train_set.class_to_idx['UNL']] = -1
+            train_set.class_to_idx['UNL'] = -1
         val_set = Dataset(f'{data_path}/val', transform=test_transform)
         test_set = Dataset(f'{data_path}/test', transform=test_transform)
         return train_set, val_set, test_set

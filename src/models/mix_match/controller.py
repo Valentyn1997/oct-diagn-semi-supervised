@@ -7,9 +7,8 @@ import torch.nn.functional as F
 import numpy as np
 from torchsummary import summary
 
-from src.models.mix_match.utils import calculate_hash
 from src.models.mix_match.utils import interleave
-from src.models.utils import accuracy, MlflowLogger, WeightEMA, EarlyStopping
+from src.models.utils import accuracy, MlflowLogger, WeightEMA, EarlyStopping, f1_score
 from src.models.wideresnet import WideResNet_50_2
 
 
@@ -25,7 +24,7 @@ class MixMatchController(ModelPlugin):
         super().optimizer_step(retain_graph)
         self.ema_optimizer.step()
 
-    def routine(self, T: float = 0.5, alpha: float = 0.9, *args, **kwargs):
+    def routine(self, T: float = 0.5, alpha: float = 0.75, *args, **kwargs):
         """
         :param alpha: Parameter of beta distribution
         :param T: Sharpening temperature
@@ -113,7 +112,11 @@ class MixMatchController(ModelPlugin):
             # top5 = accuracy(outputs_l, targets_l, labeled, top=5)
             self.add_results(acc_top1=top1)
 
-    def build(self, lambda_u: float = 12.5, ema_decay: float = 0.999, early_stopping_patience: int = 250,
+            # F1-score
+            f1 = f1_score(outputs_l, targets_l)
+            self.add_results(f1_score=f1)
+
+    def build(self, lambda_u: float = 12.5, ema_decay: float = 0.999, early_stopping_patience: int = 500,
               run_hash=None, log_to_mlflow=True, type_of_run=None, *args, **kwargs):
         """
         :param early_stopping_patience: Patience for early stopping, number of epochs
@@ -165,17 +168,34 @@ class MixMatchController(ModelPlugin):
         self.early_stopping.on_epoch_end()
 
         # Mlflow Logging
-        MlflowLogger.log_all_metrics('train', self.early_stopping.stopped_epoch)
-        MlflowLogger.log_all_metrics('val', self.early_stopping.stopped_epoch)
-        MlflowLogger.log_all_metrics('test', self.early_stopping.stopped_epoch)
+        if exp.INFO['epoch'] >= exp.ARGS['train']['epochs']:
+            epoch_to_log = self.early_stopping.best_epoch  # Last epoch - logging the best epoch (based on val)
+        elif self.early_stopping.stopped_epoch is not None:
+            epoch_to_log = self.early_stopping.stopped_epoch  # Stopped learning - logging the best epoch (based on val)
+        else:
+            epoch_to_log = exp.INFO['epoch']  # Logging current epoch
+
+        MlflowLogger.log_all_metrics('train', epoch_to_log)
+        MlflowLogger.log_all_metrics('val', epoch_to_log)
+        MlflowLogger.log_all_metrics('test', epoch_to_log)
 
         if self.early_stopping.stopped_epoch is not None:
             mlflow.log_metric('stopped_epoch', self.early_stopping.stopped_epoch, step=exp.INFO['epoch'])
             exp.INFO['epoch'] = exp.ARGS['train']['epochs']
 
     def visualize(self):
-        inputs = self.inputs('data.images')
-        targets = self.inputs('data.targets')
+        if exp.ARGS['data']['data']['split_labelled_and_unlabelled'] and self.data.mode == 'train':
+            inputs_l = self.inputs('data_l.images')
+            targets_l = self.inputs('data_l.targets')
+
+            inputs_u = self.inputs('data_u.images')[0]
+            targets_u = torch.full(targets_l.shape, -1, dtype=torch.long).to(targets_l.device)
+
+            inputs = torch.cat([inputs_l, inputs_u])
+            targets = torch.cat([targets_l, targets_u])
+        else:
+            inputs = self.inputs('data.images')
+            targets = self.inputs('data.targets')
 
         inputs = inputs[:, :1, :, :]
         inputs *= 0.229

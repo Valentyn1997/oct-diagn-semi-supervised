@@ -11,8 +11,6 @@ class WideResNet_50_2(nn.Module):
         self.wrn = torch.hub.load('pytorch/vision:v0.5.0', 'wide_resnet50_2', pretrained=pretrained)
         self.wrn.eval()
         self.wrn.fc = nn.Linear(self.wrn.fc.in_features, num_classes)
-
-    def forward(self, x):
         if self.freeze_layers:
             for name, param in self.wrn.named_parameters():
                 if name == 'fc.weight' or name == 'fc.bias':
@@ -20,5 +18,6 @@ class WideResNet_50_2(nn.Module):
                 else:
                     param.requires_grad = False
 
+    def forward(self, x):
         return self.wrn(x)
 

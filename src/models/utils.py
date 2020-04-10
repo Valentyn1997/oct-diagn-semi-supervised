@@ -90,6 +90,7 @@ class EarlyStopping(object):
         self.patience = patience
         self.wait = 0
         self.best_value = 0.0
+        self.best_epoch = 0
         self.stopped_epoch = None
 
     def on_epoch_end(self):
@@ -97,17 +98,17 @@ class EarlyStopping(object):
         if current_value is None:
             pass
         else:
-            if (current_value - self.best_value) > self.min_delta:
+            if (current_value - self.best_value) >= self.min_delta:
                 self.best_value = current_value
+                self.best_epoch = exp.INFO['epoch']
                 self.wait = 1
             else:
                 if self.wait >= self.patience:
-                    self.stopped_epoch = exp.INFO['epoch']
+                    self.stopped_epoch = self.best_epoch
                 self.wait += 1
 
 
-
-def accuracy(outputs, targets, labeled, top: int = 1, is_argmax=False):
+def accuracy(outputs: torch.Tensor, targets: torch.Tensor, labeled, top: int = 1, is_argmax=False):
     """Computes the accuracy.
 
     Args:
@@ -129,3 +130,40 @@ def accuracy(outputs, targets, labeled, top: int = 1, is_argmax=False):
         correct_k = correct[:top].view(-1).float().sum(0, keepdim=True)
         accuracy = correct_k.mul_(100.0 / labeled.float().sum())
         return accuracy.detach().item()
+
+
+def f1_score(outputs: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+    '''Calculate F1 score. Can work with gpu tensors
+
+    The original implmentation is written by Michal Haltuf on Kaggle.
+
+    Returns
+    -------
+    torch.Tensor
+        `ndim` == 1. 0 <= val <= 1
+
+    Reference
+    ---------
+    - https://www.kaggle.com/rejpalcz/best-loss-function-for-f1-score-metric
+    - https://scikit-learn.org/stable/modules/generated/sklearn.metrics.f1_score.html#sklearn.metrics.f1_score
+    - https://discuss.pytorch.org/t/calculating-precision-recall-and-f1-score-in-case-of-multi-label-classification/28265/6
+
+    '''
+    assert targets.ndim == 1
+    assert outputs.ndim == 1 or outputs.ndim == 2
+
+    if outputs.ndim == 2:
+        outputs = outputs.argmax(dim=1)
+
+    tp = (targets * outputs).sum().to(torch.float32)
+    tn = ((1 - targets) * (1 - outputs)).sum().to(torch.float32)
+    fp = ((1 - targets) * outputs).sum().to(torch.float32)
+    fn = (targets * (1 - outputs)).sum().to(torch.float32)
+
+    epsilon = 1e-7
+
+    precision = tp / (tp + fp + epsilon)
+    recall = tp / (tp + fn + epsilon)
+
+    f1 = 2 * (precision * recall) / (precision + recall + epsilon)
+    return f1.detach().item()
