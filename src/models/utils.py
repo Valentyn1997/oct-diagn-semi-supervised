@@ -2,6 +2,7 @@ import re
 import mlflow
 import torch
 from cortex._lib import exp
+import numpy as np
 
 
 def remove_wrong_characters(metric_key):
@@ -83,13 +84,13 @@ class WeightEMA(object):
 
 
 class EarlyStopping(object):
-    def __init__(self, monitor='acc_top1', mode='val', min_delta=0.5, patience=5):
+    def __init__(self, monitor='cross_entropy', mode='val', min_delta=0.0, patience=5):
         self.monitor = monitor
         self.mode = mode
         self.min_delta = min_delta
         self.patience = patience
         self.wait = 0
-        self.best_value = 0.0
+        self.best_value = 100.0
         self.best_epoch = 0
         self.stopped_epoch = None
 
@@ -98,7 +99,7 @@ class EarlyStopping(object):
         if current_value is None:
             pass
         else:
-            if (current_value - self.best_value) >= self.min_delta:
+            if (current_value - self.best_value) <= - self.min_delta:
                 self.best_value = current_value
                 self.best_epoch = exp.INFO['epoch']
                 self.wait = 1

@@ -201,7 +201,7 @@ class SSLDatasetPlugin(TorchvisionDatasetPlugin):
 
         if source == 'ImageFolder':
             handler = self._handle_ImageFolder
-            data_path = DATA_PATH
+            data_path = DATA_PATH + '/' + exp.NAME
         else:
             data_path = os.path.join(torchvision_path, source)
             if self.copy_to_local:
