@@ -89,10 +89,6 @@ class MixMatchController(ModelPlugin):
                                   logits_u, mixed_target[self.data.batch_size['train']:],
                                   exp.INFO['data_steps'] / all_data_steps)
 
-            print(exp.INFO['data_steps'])
-
-            # ema_optimizer.step()
-
             # record loss
             self.losses.classifier = Ll + w * Lu
 
