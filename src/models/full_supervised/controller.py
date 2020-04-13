@@ -37,11 +37,11 @@ class FullSupervisedController(MixMatchController):
             self.add_results(acc_top1=top1)
 
     def build(self, pretrained=False, freeze_layers=None, ema_decay: float = 0.999, log_to_mlflow=True,
-              early_stopping_patience: int = 20, type_of_run=None, run_hash=None, *args, **kwargs):
+              early_stopping: dict = None, type_of_run=None, run_hash=None, *args, **kwargs):
         """
         :param run_hash: MD5 hash of hyperparameters string for effective hyperparameter search
         :param type_of_run: Type of run to log to mlflow (as a tag): hyperparam_search, varying_number_of_labels, None
-        :param early_stopping_patience: Patience for early stopping, number of epochs
+        :param early_stopping: Parameters for early stopping
         :param freeze_layers: Freeze all the layers except FC
         :param pretrained: Use pretrained on ImageNet encoder, freezing all the layers except last
         :param ema_decay: Exponential moving average decay rate
@@ -62,7 +62,8 @@ class FullSupervisedController(MixMatchController):
 
         self.ema_optimizer = WeightEMA(self.nets.classifier, self.nets.ema_classifier, alpha=ema_decay)
         self.criterion = torch.nn.CrossEntropyLoss()
-        self.early_stopping = EarlyStopping(patience=exp.ARGS['model']['early_stopping_patience'], min_delta=0.0)
+        if early_stopping is not None:
+            self.early_stopping = EarlyStopping(**early_stopping)
 
         if log_to_mlflow:
             MlflowLogger.start_run(exp.INFO['name'] + '_FullSupervised')
@@ -73,4 +74,4 @@ class FullSupervisedController(MixMatchController):
             mlflow.log_param('freeze_layers', freeze_layers)
             mlflow.log_param('ema_decay', ema_decay)
             mlflow.log_param('run_hash', exp.ARGS['model']['run_hash'])
-            mlflow.log_param('early_stopping_patience', exp.ARGS['model']['early_stopping_patience'])
+            mlflow.log_param('early_stopping', exp.ARGS['model']['early_stopping'])

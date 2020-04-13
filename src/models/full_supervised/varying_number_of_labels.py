@@ -30,7 +30,7 @@ if __name__ == '__main__':
         logger.info(f'================== Run {run_ind+1}/{len(params_list)} ==================')
 
         # Recalculating number of epochs
-        params['early_stopping_patience'] = params['t.epochs'] // 2
+        params['early_stopping'] = dict(patience=params['t.epochs'] // 2, monitor='cross_entropy')
 
         existing_runs = mlflow.search_runs(filter_string=f"params.run_hash = '{calculate_hash(params)}'",
                                            run_view_type=mlflow.tracking.client.ViewType.ACTIVE_ONLY,

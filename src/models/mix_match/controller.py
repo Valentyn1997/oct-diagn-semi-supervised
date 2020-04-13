@@ -87,7 +87,9 @@ class MixMatchController(ModelPlugin):
             all_data_steps = round(exp.ARGS['data']['data']['n_labels'] / exp.ARGS['data']['batch_size']['train'])
             Ll, Lu, w = self.loss(logits_l, mixed_target[:self.data.batch_size['train']],
                                   logits_u, mixed_target[self.data.batch_size['train']:],
-                                  exp.INFO['epoch'] + exp.INFO['data_steps'] / all_data_steps)
+                                  exp.INFO['data_steps'] / all_data_steps)
+
+            print(exp.INFO['data_steps'])
 
             # ema_optimizer.step()
 
@@ -117,10 +119,10 @@ class MixMatchController(ModelPlugin):
             f1 = f1_score(outputs_l, targets_l)
             self.add_results(f1_score=f1)
 
-    def build(self, lambda_u: float = 12.5, ema_decay: float = 0.999, early_stopping_patience: int = 500,
+    def build(self, lambda_u: float = 12.5, ema_decay: float = 0.999, early_stopping: dict = None,
               run_hash=None, log_to_mlflow=True, type_of_run=None, *args, **kwargs):
         """
-        :param early_stopping_patience: Patience for early stopping, number of epochs
+        :param early_stopping: Parameters for early stopping
         :param type_of_run: Type of run to log to mlflow (as a tag): hyperparam_search, varying_number_of_labels, None
         :param run_hash: MD5 hash of hyperparameters string for effective hyperparameter search
         :param log_to_mlflow: Log run to mlflow
@@ -142,7 +144,8 @@ class MixMatchController(ModelPlugin):
             param.detach_()
 
         self.ema_optimizer = WeightEMA(self.nets.classifier, self.nets.ema_classifier, alpha=exp.ARGS['model']['ema_decay'])
-        self.early_stopping = EarlyStopping(patience=exp.ARGS['model']['early_stopping_patience'])
+        if early_stopping is not None:
+            self.early_stopping = EarlyStopping(**early_stopping)
         self.loss = SemiLoss(exp.ARGS['model']['lambda_u'], exp.ARGS['train']['epochs'])
         self.criterion = torch.nn.CrossEntropyLoss()
 
@@ -156,7 +159,7 @@ class MixMatchController(ModelPlugin):
             mlflow.log_param('T', exp.ARGS['model']['T'])
             mlflow.log_param('alpha', exp.ARGS['model']['alpha'])
             mlflow.log_param('run_hash', exp.ARGS['model']['run_hash'])
-            mlflow.log_param('early_stopping_patience', exp.ARGS['model']['early_stopping_patience'])
+            mlflow.log_param('early_stopping', exp.ARGS['model']['early_stopping'])
 
     def eval_loop(self):
         # Evaluation
@@ -165,24 +168,28 @@ class MixMatchController(ModelPlugin):
         self.data.reset(mode='test')
         super().eval_loop()
 
-        # Early stopping
-        self.early_stopping.on_epoch_end()
+        if not hasattr(self, 'early_stopping'):
+            MlflowLogger.log_all_metrics('train')
+            MlflowLogger.log_all_metrics('val')
+            MlflowLogger.log_all_metrics('test')
+        else:  # Early stopping
+            self.early_stopping.on_epoch_end()
 
-        # Mlflow Logging
-        if exp.INFO['epoch'] >= exp.ARGS['train']['epochs']:
-            epoch_to_log = self.early_stopping.best_epoch  # Last epoch - logging the best epoch (based on val)
-        elif self.early_stopping.stopped_epoch is not None:
-            epoch_to_log = self.early_stopping.stopped_epoch  # Stopped learning - logging the best epoch (based on val)
-        else:
-            epoch_to_log = exp.INFO['epoch']  # Logging current epoch
+            # Mlflow Logging
+            if exp.INFO['epoch'] >= exp.ARGS['train']['epochs']:
+                epoch_to_log = self.early_stopping.best_epoch  # Last epoch - logging the best epoch (based on val)
+            elif self.early_stopping.stopped_epoch is not None:
+                epoch_to_log = self.early_stopping.stopped_epoch  # Stopped learning - logging the best epoch (based on val)
+            else:
+                epoch_to_log = exp.INFO['epoch']  # Logging current epoch
 
-        MlflowLogger.log_all_metrics('train', epoch_to_log)
-        MlflowLogger.log_all_metrics('val', epoch_to_log)
-        MlflowLogger.log_all_metrics('test', epoch_to_log)
+            MlflowLogger.log_all_metrics('train', epoch_to_log)
+            MlflowLogger.log_all_metrics('val', epoch_to_log)
+            MlflowLogger.log_all_metrics('test', epoch_to_log)
 
-        if self.early_stopping.stopped_epoch is not None:
-            mlflow.log_metric('stopped_epoch', self.early_stopping.stopped_epoch, step=exp.INFO['epoch'])
-            exp.INFO['epoch'] = exp.ARGS['train']['epochs']
+            if self.early_stopping.stopped_epoch is not None:
+                mlflow.log_metric('stopped_epoch', self.early_stopping.stopped_epoch, step=exp.INFO['epoch'])
+                exp.INFO['epoch'] = exp.ARGS['train']['epochs']
 
     def visualize(self):
         if exp.ARGS['data']['data']['split_labelled_and_unlabelled'] and self.data.mode == 'train':
