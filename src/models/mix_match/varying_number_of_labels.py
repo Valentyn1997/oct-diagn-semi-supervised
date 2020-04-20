@@ -26,7 +26,7 @@ if __name__ == '__main__':
         'ema_decay': [0.999],  # 0.999
         'alpha': [0.9],  # 0.5
         'lambda_u': [25],  # 12.5 - 500 epochs / 25 - 1000 epochs / 37.5 - 1500 epochs,
-        'data_args.n_labels': [40, 100, 200, 800, 2000, 4000, 20000][::-1],
+        'data_args.n_labels': [40, 100, 200, 800, 2000, 4000, 20000],
     }
     params_list = [dict(zip(params_dict.keys(), values)) for values in itertools.product(*params_dict.values())]
 
@@ -39,7 +39,8 @@ if __name__ == '__main__':
         batches_per_epoch = params['data_args.n_labels'] // batch_size_train
         epochs_ratio = BASELINE_TOTAL_BATCHES / (batches_per_epoch * N_EPOCHS)
         params['t.epochs'] = round(params['t.epochs'] * epochs_ratio)
-        params['early_stopping'] = dict(patience=params['t.epochs'] // 2, monitor='cross_entropy')
+        # params['early_stopping'] = dict(patience=params['t.epochs'] // 2, monitor='cross_entropy')
+        params['early_stopping'] = None
 
         existing_runs = mlflow.search_runs(filter_string=f"params.run_hash = '{calculate_hash(params)}'",
                                            run_view_type=mlflow.tracking.client.ViewType.ACTIVE_ONLY,
