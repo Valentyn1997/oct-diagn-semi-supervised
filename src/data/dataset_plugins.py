@@ -1,15 +1,14 @@
 import torchvision
-import torchvision.transforms as transforms
 from cortex.built_ins.datasets.torchvision_datasets import TorchvisionDatasetPlugin
 from cortex.plugins import DatasetPlugin, register_plugin
-from cortex.built_ins.datasets.utils import build_transforms
 from cortex._lib.data import _PLUGINS, DATA_HANDLER, DATASETS, DataHandler
 from cortex._lib import exp
 import logging
-from src.data.transforms import RandomPadandCrop, TransformTwice
+from src.data.transforms import TransformTwice
 import os
 from copy import deepcopy
 from src import DATA_PATH
+from src.data.transforms import build_transforms
 
 import numpy as np
 from torchvision.datasets import VisionDataset
@@ -90,7 +89,6 @@ def __next__(self):
 
 
 def remove_labels(train_set: VisionDataset, n_labels: int):
-    # NOTE: this function assume that train_set is shuffled.
     labels_attr = None
     if hasattr(train_set, 'labels'):
         labels_attr = 'labels'
@@ -115,30 +113,33 @@ def remove_labels(train_set: VisionDataset, n_labels: int):
 class SSLDatasetPlugin(TorchvisionDatasetPlugin):
 
     def handle(self,
+               # Dataset name and folder
                source: str,
                source_folder: str = None,
+               # SSL
                n_labels: int = None,
                split_labelled_and_unlabelled: bool = False,
+               labeled_only: bool = False,
+               # Preprocessing
                normalize=True,
                train_samples: int = None,
                test_samples: int = None,
-               labeled_only: bool = False,
+               # Train augmentations
                train_transform=None,
                extra_init_train_transform: object = None,
-               test_transform=None,
-               extra_init_test_transform: object = None,
                center_crop: int = None,
                image_size: int = None,
                random_crop: int = None,
                flip: bool = False,
                random_resize_crop: int = None,
-               random_sized_crop: int = None,
+               # Test augmentations
+               test_transform=None,
+               extra_init_test_transform: object = None,
                center_crop_test: int = None,
                image_size_test: int = None,
                random_crop_test: int = None,
                flip_test: bool = False,
-               random_resize_crop_test: int = None,
-               random_sized_crop_test: int = None):
+               random_resize_crop_test: int = None):
         """
        Args:
            :param source_folder: Dataset folder in <project_root>/data/, should be specified if source == ImageFolder
@@ -147,7 +148,6 @@ class SSLDatasetPlugin(TorchvisionDatasetPlugin):
            :param test_transform:
            :param train_transform:
            :param split_labelled_and_unlabelled:
-           :param random_sized_crop_test:
            :param random_resize_crop_test:
            :param flip_test:
            :param random_crop_test:
@@ -164,7 +164,6 @@ class SSLDatasetPlugin(TorchvisionDatasetPlugin):
            :param random_crop: Random cropping of the image.
            :param flip: Random flipping.
            :param random_resize_crop: Random resizing and cropping of the image.
-           :param random_sized_crop: Random sizing and cropping of the image.
        """
         Dataset = getattr(torchvision.datasets, source)
         Dataset = self.make_indexing(Dataset)
@@ -178,9 +177,8 @@ class SSLDatasetPlugin(TorchvisionDatasetPlugin):
                 normalize = [(0.5,), (0.5,)]
                 scale = (0, 1)
             elif source == 'ImageFolder':
-                extra_init_train_transform = transforms.Grayscale()
-                extra_init_test_transform = transforms.Grayscale()
-                normalize = [(0,), (1,)]
+                # specific constants for Pytorch WideResNet
+                normalize = [(0.485, 0.456, 0.406), (0.229, 0.224, 0.225)]
                 scale = (0, 1)
             else:
                 normalize = [(0.5, 0.5, 0.5), (0.5, 0.5, 0.5)]
@@ -190,12 +188,10 @@ class SSLDatasetPlugin(TorchvisionDatasetPlugin):
 
         if train_transform is None or test_transform is None:
             train_transform = build_transforms(normalize=normalize, center_crop=center_crop, image_size=image_size,
-                                               random_crop=random_crop, flip=flip, random_resize_crop=random_resize_crop,
-                                               random_sized_crop=random_sized_crop)
+                                               random_crop=random_crop, flip=flip, random_resize_crop=random_resize_crop)
             test_transform = build_transforms(normalize=normalize, center_crop=center_crop_test, image_size=image_size_test,
                                               random_crop=random_crop_test, flip=flip_test,
-                                              random_resize_crop=random_resize_crop_test,
-                                              random_sized_crop=random_sized_crop_test)
+                                              random_resize_crop=random_resize_crop_test)
 
         if extra_init_train_transform is not None:
             train_transform.transforms.insert(0, extra_init_train_transform)
@@ -205,25 +201,27 @@ class SSLDatasetPlugin(TorchvisionDatasetPlugin):
 
         if source == 'ImageFolder':
             handler = self._handle_ImageFolder
-            data_path = DATA_PATH
+            data_path = DATA_PATH + '/' + exp.NAME
         else:
             data_path = os.path.join(torchvision_path, source)
             if self.copy_to_local:
                 data_path = self.copy_to_local_path(data_path)
             handler = self._handle
 
-        train_set, test_set = handler(Dataset, data_path, transform=train_transform, test_transform=test_transform,
-                                      labeled_only=labeled_only)
+        train_set, val_set, test_set = handler(Dataset, data_path, transform=train_transform, test_transform=test_transform,
+                                               labeled_only=labeled_only)
+        # Removing labels for Semi-Supervised setup
+        if n_labels is not None:
+            remove_labels(train_set, n_labels)
 
-        remove_labels(train_set, n_labels)
         dim_images = train_set[0][0].size()
 
         labels = None
         if hasattr(train_set, 'labels'):
-            labels = train_set.labels
+            labels = np.array(train_set.labels)
             labels_attr = 'labels'
         elif hasattr(train_set, 'targets'):
-            labels = train_set.targets
+            labels = np.array(train_set.targets)
             labels_attr = 'targets'
 
         uniques = sorted(np.unique(labels).tolist())
@@ -235,7 +233,8 @@ class SSLDatasetPlugin(TorchvisionDatasetPlugin):
         dims = dict(images=dim_images, targets=dim_l)
         input_names = ['images', 'targets', 'index']
 
-        self.add_dataset(source, data=dict(train=train_set, test=test_set), input_names=input_names, dims=dims, scale=scale)
+        self.add_dataset(source, data=dict(train=train_set, val=val_set, test=test_set),
+                         input_names=input_names, dims=dims, scale=scale)
 
         if split_labelled_and_unlabelled:
             DATA_HANDLER.batch_size['train'] //= 2
@@ -249,9 +248,9 @@ class SSLDatasetPlugin(TorchvisionDatasetPlugin):
             setattr(train_set_unlabeled, labels_attr, list(labels[labels == -1]))
             train_set_unlabeled.transform = TransformTwice(train_set_unlabeled.transform)
 
-            self.add_dataset(source + '_l', data=dict(train=train_set_labeled, test=test_set),
+            self.add_dataset(source + '_l', data=dict(train=train_set_labeled, val=val_set, test=test_set),
                              input_names=input_names, dims=dims, scale=scale)
-            self.add_dataset(source + '_u', data=dict(train=train_set_unlabeled, test=test_set),
+            self.add_dataset(source + '_u', data=dict(train=train_set_unlabeled, val=val_set, test=test_set),
                              input_names=input_names, dims=dims, scale=scale)
 
             DATA_HANDLER.add_dataset(DATASETS, source + '_l', 'data_l', self, n_workers=4, shuffle=True)
@@ -264,8 +263,13 @@ class SSLDatasetPlugin(TorchvisionDatasetPlugin):
 
     def _handle_ImageFolder(self, Dataset, data_path, transform=None, test_transform=None, **kwargs):
         train_set = Dataset(f'{data_path}/train', transform=transform)
+        if 'UNL' in train_set.classes:
+            train_set.targets = np.array(train_set.targets)
+            train_set.targets[train_set.targets == train_set.class_to_idx['UNL']] = -1
+            train_set.class_to_idx['UNL'] = -1
+        val_set = Dataset(f'{data_path}/val', transform=test_transform)
         test_set = Dataset(f'{data_path}/test', transform=test_transform)
-        return train_set, test_set
+        return train_set, val_set, test_set
 
 
 # Removing all registered DatasetPlugins

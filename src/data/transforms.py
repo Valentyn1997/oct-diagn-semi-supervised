@@ -1,5 +1,6 @@
 import numpy as np
 from PIL import Image
+import torchvision.transforms as transforms
 
 
 def pad(x, border=4):
@@ -53,3 +54,48 @@ class TransformTwice:
         out1 = self.transform(inp)
         out2 = self.transform(inp)
         return out1, out2
+
+
+def build_transforms(normalize=None, center_crop=None, image_size=None,
+                     random_crop=None, flip=None, random_resize_crop=None):
+    """
+
+    Args:
+        normalize (tuple or transforms.Normalize): Parameters for data normalization.
+        center_crop (int): Size for center crop.
+        image_size (int): Size for image size.
+        random_crop (int): Size for image random crop.
+        flip (bool): Randomly flip the data horizontally.
+        random_resize_crop (dict): Random resize crop the image.
+
+    Returns:
+        Transforms
+
+    """
+
+    transform_ = []
+
+    if image_size:
+        if isinstance(image_size, int):
+            image_size = (image_size, image_size)
+        transform_.append(transforms.Resize(image_size))
+
+    if random_resize_crop:
+        transform_.append(transforms.RandomResizedCrop(random_resize_crop['size'], random_resize_crop['scale']))
+    elif random_crop:
+        transform_.append(transforms.RandomCrop(random_crop))
+    elif center_crop:
+        transform_.append(transforms.CenterCrop(center_crop))
+
+    if flip:
+        transform_.append(transforms.RandomHorizontalFlip())
+
+    transform_.append(transforms.ToTensor())
+
+    if normalize:
+        if isinstance(normalize, transforms.Normalize):
+            transform_.append(normalize)
+        else:
+            transform_.append(transforms.Normalize(*normalize))
+    transform = transforms.Compose(transform_)
+    return transform

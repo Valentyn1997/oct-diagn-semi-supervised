@@ -6,22 +6,20 @@ from torch.backends import cudnn
 import torch.nn.functional as F
 import numpy as np
 from torchsummary import summary
-from torchvision.transforms import Resize
 
-from src.models.mix_match.wideresnet import WideResNet
 from src.models.mix_match.utils import interleave
-from src.models.utils import accuracy, MlflowLogger
+from src.models.utils import accuracy, MlflowLogger, WeightEMA, EarlyStopping, f1_score
+from src.models.wideresnet import WideResNet_50_2
 
 
 class MixMatchController(ModelPlugin):
     defaults = dict(
-        data=dict(batch_size=dict(train=64, test=64), inputs=dict(inputs='images'), shuffle=True, skip_last_batch=True),
-        train=dict(save_on_lowest='losses.classifier', epochs=1024*16, archive_every=1000),
-        optimizer=dict(optimizer='Adam', learning_rate=0.002, single_optimizer=True)
+        data=dict(batch_size=dict(train=32, val=32, test=32), inputs=dict(inputs='images'), shuffle=True, skip_last_batch=True),
+        train=dict(save_on_lowest=None, epochs=500, archive_every=None),
+        optimizer=dict(optimizer='Adam', learning_rate=0.01, single_optimizer=True)
     )
 
     # TODO Not exactly the same batches, as in MixMatch
-
     def optimizer_step(self, retain_graph=False):
         super().optimizer_step(retain_graph)
         self.ema_optimizer.step()
@@ -31,7 +29,7 @@ class MixMatchController(ModelPlugin):
         :param alpha: Parameter of beta distribution
         :param T: Sharpening temperature
         """
-        if self.data.mode == 'test':
+        if self.data.mode == 'test' or self.data.mode == 'val':
             targets_l = self.inputs('data.targets')
             inputs_l = self.inputs('data.images')
 
@@ -86,11 +84,10 @@ class MixMatchController(ModelPlugin):
             logits_l = logits[0]
             logits_u = torch.cat(logits[1:], dim=0)
 
+            all_data_steps = round(exp.ARGS['data']['data']['n_labels'] / exp.ARGS['data']['batch_size']['train'])
             Ll, Lu, w = self.loss(logits_l, mixed_target[:self.data.batch_size['train']],
                                   logits_u, mixed_target[self.data.batch_size['train']:],
-                                  exp.INFO['epoch'] + exp.INFO['data_steps'] / exp.ARGS['train']['epochs'])
-
-            # ema_optimizer.step()
+                                  exp.INFO['data_steps'] / all_data_steps)
 
             # record loss
             self.losses.classifier = Ll + w * Lu
@@ -114,8 +111,16 @@ class MixMatchController(ModelPlugin):
             # top5 = accuracy(outputs_l, targets_l, labeled, top=5)
             self.add_results(acc_top1=top1)
 
-    def build(self, lambda_u: float = 75, ema_decay: float = 0.999, log_to_mlflow=True, *args, **kwargs):
+            # F1-score
+            f1 = f1_score(outputs_l, targets_l)
+            self.add_results(f1_score=f1)
+
+    def build(self, lambda_u: float = 12.5, ema_decay: float = 0.999, early_stopping: dict = None,
+              run_hash=None, log_to_mlflow=True, type_of_run=None, *args, **kwargs):
         """
+        :param early_stopping: Parameters for early stopping
+        :param type_of_run: Type of run to log to mlflow (as a tag): hyperparam_search, varying_number_of_labels, None
+        :param run_hash: MD5 hash of hyperparameters string for effective hyperparameter search
         :param log_to_mlflow: Log run to mlflow
         :param ema_decay: Exponential moving average decay rate
         :param lambda_u: Unlabeled loss weight
@@ -127,35 +132,78 @@ class MixMatchController(ModelPlugin):
         self.data.next()
         input_shape = self.get_dims('data.images')
 
-        self.nets.classifier = WideResNet(num_classes=self.get_dims('data.targets'))
-        self.nets.ema_classifier = WideResNet(num_classes=self.get_dims('data.targets'))
-        print(summary(self.nets.classifier, (1, 512, 512)))
+        self.nets.classifier = WideResNet_50_2(num_classes=self.get_dims('data.targets'), pretrained=False)
+        self.nets.ema_classifier = WideResNet_50_2(num_classes=self.get_dims('data.targets'), pretrained=False)
+        print(summary(self.nets.classifier, input_shape))
 
         for param in self.nets.ema_classifier.parameters():
             param.detach_()
 
-        self.ema_optimizer = WeightEMA(self.nets.classifier, self.nets.ema_classifier, alpha=ema_decay)
-        self.loss = SemiLoss(lambda_u, exp.ARGS['train']['epochs'])
+        self.ema_optimizer = WeightEMA(self.nets.classifier, self.nets.ema_classifier, alpha=exp.ARGS['model']['ema_decay'])
+        if early_stopping is not None:
+            self.early_stopping = EarlyStopping(**early_stopping)
+        self.loss = SemiLoss(exp.ARGS['model']['lambda_u'], exp.ARGS['train']['epochs'])
         self.criterion = torch.nn.CrossEntropyLoss()
 
         if log_to_mlflow:
             MlflowLogger.start_run(exp.INFO['name'] + '_MixMatch')
             MlflowLogger.log_basic_run_params(input_shape)
             MlflowLogger.log_ssl_parameters()
-            mlflow.log_param('ema_decay', ema_decay)
-            mlflow.log_param('lambda_u', lambda_u)
+            mlflow.set_tag('type_of_run', type_of_run)
+            mlflow.log_param('ema_decay', exp.ARGS['model']['ema_decay'])
+            mlflow.log_param('lambda_u', exp.ARGS['model']['lambda_u'])
             mlflow.log_param('T', exp.ARGS['model']['T'])
             mlflow.log_param('alpha', exp.ARGS['model']['alpha'])
+            mlflow.log_param('run_hash', exp.ARGS['model']['run_hash'])
+            mlflow.log_param('early_stopping', exp.ARGS['model']['early_stopping'])
 
     def eval_loop(self):
+        # Evaluation
+        self.data.reset(mode='val')
         super().eval_loop()
-        if MlflowLogger.log_to_mlflow:
-            MlflowLogger.log_all_metrics(mode='train')
-            MlflowLogger.log_all_metrics(mode='test')
+        self.data.reset(mode='test')
+        super().eval_loop()
+
+        if not hasattr(self, 'early_stopping'):
+            MlflowLogger.log_all_metrics('train')
+            MlflowLogger.log_all_metrics('val')
+            MlflowLogger.log_all_metrics('test')
+        else:  # Early stopping
+            self.early_stopping.on_epoch_end()
+
+            # Mlflow Logging
+            if exp.INFO['epoch'] >= exp.ARGS['train']['epochs']:
+                epoch_to_log = self.early_stopping.best_epoch  # Last epoch - logging the best epoch (based on val)
+            elif self.early_stopping.stopped_epoch is not None:
+                epoch_to_log = self.early_stopping.stopped_epoch  # Stopped learning - logging the best epoch (based on val)
+            else:
+                epoch_to_log = exp.INFO['epoch']  # Logging current epoch
+
+            MlflowLogger.log_all_metrics('train', epoch_to_log)
+            MlflowLogger.log_all_metrics('val', epoch_to_log)
+            MlflowLogger.log_all_metrics('test', epoch_to_log)
+
+            if self.early_stopping.stopped_epoch is not None:
+                mlflow.log_metric('stopped_epoch', self.early_stopping.stopped_epoch, step=exp.INFO['epoch'])
+                exp.INFO['epoch'] = exp.ARGS['train']['epochs']
 
     def visualize(self):
-        inputs = self.inputs('data.images')
-        targets = self.inputs('data.targets')
+        if exp.ARGS['data']['data']['split_labelled_and_unlabelled'] and self.data.mode == 'train':
+            inputs_l = self.inputs('data_l.images')
+            targets_l = self.inputs('data_l.targets')
+
+            inputs_u = self.inputs('data_u.images')[0]
+            targets_u = torch.full(targets_l.shape, -1, dtype=torch.long).to(targets_l.device)
+
+            inputs = torch.cat([inputs_l, inputs_u])
+            targets = torch.cat([targets_l, targets_u])
+        else:
+            inputs = self.inputs('data.images')
+            targets = self.inputs('data.targets')
+
+        inputs = inputs[:, :1, :, :]
+        inputs *= 0.229
+        inputs += 0.485
 
         self.add_image(F.adaptive_avg_pool2d(inputs, (64, 64)), name='Input', labels=targets)
 
@@ -180,25 +228,3 @@ class SemiLoss:
         Lu = torch.mean((probs_u - targets_u) ** 2)
 
         return Lx, Lu, self.lambda_u * SemiLoss.linear_rampup(epoch, self.epochs)
-
-
-class WeightEMA(object):
-    def __init__(self, model, ema_model, alpha=0.999):
-        self.model = model
-        self.ema_model = ema_model
-        self.alpha = alpha
-        self.params = list(model.state_dict().values())
-        self.ema_params = list(ema_model.state_dict().values())
-        self.wd = 0.02 * exp.ARGS['optimizer']['learning_rate']
-
-        for param, ema_param in zip(self.params, self.ema_params):
-            param.data.copy_(ema_param.data)
-
-    def step(self):
-        one_minus_alpha = 1.0 - self.alpha
-        for param, ema_param in zip(self.params, self.ema_params):
-            if len(param.shape) > 0:
-                ema_param.mul_(self.alpha)
-                ema_param.add_(param * one_minus_alpha)
-                # customized weight decay
-                param.mul_(1 - self.wd)
