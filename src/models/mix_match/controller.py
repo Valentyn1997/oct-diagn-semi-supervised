@@ -84,7 +84,7 @@ class MixMatchController(ModelPlugin):
             logits_l = logits[0]
             logits_u = torch.cat(logits[1:], dim=0)
 
-            all_data_steps = round(exp.ARGS['data']['data']['n_labels'] / exp.ARGS['data']['batch_size']['train'])
+            all_data_steps = len(self.data.loaders['data_l']['train'])
             Ll, Lu, w = self.loss(logits_l, mixed_target[:self.data.batch_size['train']],
                                   logits_u, mixed_target[self.data.batch_size['train']:],
                                   exp.INFO['data_steps'] / all_data_steps)
