@@ -1,12 +1,10 @@
 import mlflow
 import logging
-import hashlib
 import itertools
-from cortex.main import run
 from subprocess import call
 import sys
 
-from src.models.mix_match.utils import calculate_hash
+from src.models.utils import calculate_hash
 from src import SRC_PATH, MLFLOW_SSL_URI
 
 logger = logging.getLogger('ssl_evaluation')
@@ -21,7 +19,7 @@ if __name__ == '__main__':
         'o.weight_decay': [0.0, 0.0001],
         'freeze_layers': [True, False],
         't.epochs': [50],
-        'ema_decay': [0.999],  # 0.999
+        'ema_decay': [0.],  # 0.999
         'data_args.n_labels': [40, 100, 200, 800, 2000, 4000, 20000],
     }
     params_list = [dict(zip(params_dict.keys(), values)) for values in itertools.product(*params_dict.values())]

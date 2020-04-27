@@ -1,12 +1,37 @@
 import re
 import mlflow
 import torch
+import logging
+import hashlib
+from typing import Dict, Any
 from cortex._lib import exp
 import numpy as np
 
 
 def remove_wrong_characters(metric_key):
     return re.sub(r'\(|\)|\]|\[|,', '_', metric_key)
+
+
+def _to_dot(config: Dict[str, Any], prefix=None) -> Dict[str, Any]:
+    result = dict()
+    for k, v in config.items():
+        if prefix is not None:
+            k = f'{prefix}.{k}'
+        if isinstance(v, dict):
+            v = _to_dot(v, prefix=k)
+        elif hasattr(v, '__call__'):
+            v = {k: v.__name__}
+        else:
+            v = {k: v}
+        result.update(v)
+    return result
+
+
+def calculate_hash(params):
+    # Check, if run with current parameters already exists
+    query = ' and '.join(list(map(lambda item: f"params.{item[0]} = '{str(item[1])}'", _to_dot(params).items())))
+    logging.info(query)
+    return hashlib.md5(query.encode()).hexdigest()
 
 
 class MlflowLogger:

@@ -1,12 +1,10 @@
 import mlflow
 import logging
-import hashlib
 import itertools
-from cortex.main import run
 from subprocess import call
 import sys
 
-from src.models.mix_match.utils import calculate_hash
+from src.models.utils import calculate_hash
 from src import SRC_PATH, MLFLOW_SSL_URI
 
 logger = logging.getLogger('ssl_evaluation')
