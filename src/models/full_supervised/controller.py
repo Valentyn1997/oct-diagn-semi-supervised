@@ -43,7 +43,7 @@ class FullSupervisedController(MixMatchController):
         :param type_of_run: Type of run to log to mlflow (as a tag): hyperparam_search, varying_number_of_labels, None
         :param early_stopping: Parameters for early stopping
         :param freeze_layers: Freeze all the layers except FC
-        :param pretrained: Use pretrained on ImageNet encoder, freezing all the layers except last
+        :param pretrained: Use pretrained on ImageNet encoder
         :param ema_decay: Exponential moving average decay rate
         :param log_to_mlflow: Log run to mlflow
         """

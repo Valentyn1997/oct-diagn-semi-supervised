@@ -24,7 +24,7 @@ class MixMatchController(ModelPlugin):
         super().optimizer_step(retain_graph)
         self.ema_optimizer.step()
 
-    def routine(self, T: float = 0.5, alpha: float = 0.75, *args, **kwargs):
+    def routine(self, T: float = 0.75, alpha: float = 0.5, *args, **kwargs):
         """
         :param alpha: Parameter of beta distribution
         :param T: Sharpening temperature
@@ -115,7 +115,7 @@ class MixMatchController(ModelPlugin):
             f1 = f1_score(outputs_l, targets_l)
             self.add_results(f1_score=f1)
 
-    def build(self, lambda_u: float = 12.5, ema_decay: float = 0.999, early_stopping: dict = None,
+    def build(self, lambda_u: float = 12.5, ema_decay: float = 0.999, early_stopping: dict = None, pretrained=False,
               run_hash=None, log_to_mlflow=True, type_of_run=None, *args, **kwargs):
         """
         :param early_stopping: Parameters for early stopping
@@ -124,6 +124,7 @@ class MixMatchController(ModelPlugin):
         :param log_to_mlflow: Log run to mlflow
         :param ema_decay: Exponential moving average decay rate
         :param lambda_u: Unlabeled loss weight
+        :param pretrained: Use pretrained on ImageNet encoder, freezing all the layers except last
         """
         cudnn.benchmark = True
 
@@ -132,8 +133,8 @@ class MixMatchController(ModelPlugin):
         self.data.next()
         input_shape = self.get_dims('data.images')
 
-        self.nets.classifier = WideResNet_50_2(num_classes=self.get_dims('data.targets'), pretrained=False)
-        self.nets.ema_classifier = WideResNet_50_2(num_classes=self.get_dims('data.targets'), pretrained=False)
+        self.nets.classifier = WideResNet_50_2(num_classes=self.get_dims('data.targets'), pretrained=pretrained)
+        self.nets.ema_classifier = WideResNet_50_2(num_classes=self.get_dims('data.targets'), pretrained=pretrained)
         print(summary(self.nets.classifier, input_shape))
 
         for param in self.nets.ema_classifier.parameters():
@@ -156,6 +157,7 @@ class MixMatchController(ModelPlugin):
             mlflow.log_param('alpha', exp.ARGS['model']['alpha'])
             mlflow.log_param('run_hash', exp.ARGS['model']['run_hash'])
             mlflow.log_param('early_stopping', exp.ARGS['model']['early_stopping'])
+            mlflow.log_param('pretrained', pretrained)
 
     def eval_loop(self):
         # Evaluation
