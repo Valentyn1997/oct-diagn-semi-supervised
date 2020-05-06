@@ -1,5 +1,6 @@
 import numpy as np
 from PIL import Image
+from src.data.rand_augment import RandAugmentMC
 import torchvision.transforms as transforms
 
 
@@ -54,6 +55,24 @@ class TransformTwice:
         out1 = self.transform(inp)
         out2 = self.transform(inp)
         return out1, out2
+
+
+class TransformFix(object):
+    def __init__(self, base_transform):
+        self.weak = base_transform
+
+        # Inserting strong augmentation
+        self.strong = []
+        for transform in base_transform.transforms:
+            if isinstance(transform, transforms.ToTensor):
+                self.strong.append(RandAugmentMC(n=2, m=10))
+            self.strong.append(transform)
+        self.strong = transforms.Compose(self.strong)
+
+    def __call__(self, inp):
+        weak = self.weak(inp)
+        strong = self.strong(inp)
+        return weak, strong
 
 
 def build_transforms(normalize=None, center_crop=None, image_size=None,

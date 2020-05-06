@@ -4,7 +4,7 @@ from cortex.plugins import DatasetPlugin, register_plugin
 from cortex._lib.data import _PLUGINS, DATA_HANDLER, DATASETS, DataHandler
 from cortex._lib import exp
 import logging
-from src.data.transforms import TransformTwice
+from src.data.transforms import TransformTwice, TransformFix
 import os
 from copy import deepcopy
 from src import DATA_PATH
@@ -119,7 +119,9 @@ class SSLDatasetPlugin(TorchvisionDatasetPlugin):
                # SSL
                n_labels: int = None,
                split_labelled_and_unlabelled: bool = False,
+               fix_match_transform = False,
                labeled_only: bool = False,
+               mu: int = None,
                # Preprocessing
                normalize=True,
                train_samples: int = None,
@@ -142,6 +144,8 @@ class SSLDatasetPlugin(TorchvisionDatasetPlugin):
                random_resize_crop_test: int = None):
         """
        Args:
+           :param fix_match_transform: Use FixMatch transformation instead of TransforTwice
+           :param mu: Mu parameter for fix-match
            :param source_folder: Dataset folder in <project_root>/data/, should be specified if source == ImageFolder
            :param extra_init_test_transform:
            :param extra_init_train_transform:
@@ -246,15 +250,23 @@ class SSLDatasetPlugin(TorchvisionDatasetPlugin):
             train_set_unlabeled = deepcopy(train_set)
             train_set_unlabeled.samples = [train_set_unlabeled.samples[i] for i in range(len(labels)) if labels[i] == -1]
             setattr(train_set_unlabeled, labels_attr, list(labels[labels == -1]))
-            train_set_unlabeled.transform = TransformTwice(train_set_unlabeled.transform)
+            if fix_match_transform:
+                train_set_unlabeled.transform = TransformFix(train_set_unlabeled.transform)
+            else:
+                train_set_unlabeled.transform = TransformTwice(train_set_unlabeled.transform)
 
             self.add_dataset(source + '_l', data=dict(train=train_set_labeled, val=val_set, test=test_set),
                              input_names=input_names, dims=dims, scale=scale)
             self.add_dataset(source + '_u', data=dict(train=train_set_unlabeled, val=val_set, test=test_set),
                              input_names=input_names, dims=dims, scale=scale)
 
-            DATA_HANDLER.add_dataset(DATASETS, source + '_l', 'data_l', self, n_workers=4, shuffle=True)
-            DATA_HANDLER.add_dataset(DATASETS, source + '_u', 'data_u', self, n_workers=4, shuffle=True)
+            DATA_HANDLER.add_dataset(DATASETS, source + '_l', 'data_l', self, n_workers=1, shuffle=True)
+
+            if mu is not None:
+                DATA_HANDLER.batch_size['train'] *= mu
+            DATA_HANDLER.add_dataset(DATASETS, source + '_u', 'data_u', self, n_workers=1, shuffle=True)
+            if mu is not None:
+                DATA_HANDLER.batch_size['train'] //= mu  # For early stopping to work
 
     def _handle(self, Dataset, data_path, transform=None, test_transform=None, **kwargs):
         train_set = Dataset(data_path, train=True, transform=transform, download=True)
