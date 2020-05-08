@@ -1,23 +1,26 @@
 import mlflow
 import torch
-from cortex.plugins import ModelPlugin
 from cortex._lib import exp
 from torch.backends import cudnn
 import torch.nn.functional as F
+from torch.nn import DataParallel
 import numpy as np
 from torchsummary import summary
 
-from src.models.mix_match.controller import MixMatchController, SemiLoss
-from src.models.mix_match.utils import interleave
+from src.models.mix_match.controller import MixMatchController
 from src.models.utils import accuracy, MlflowLogger, WeightEMA, EarlyStopping, f1_score
+from src.models.fix_match.utils import CosineLRPolicy
 from src.models.wideresnet import WideResNet_50_2
 
 
 class FixMatchController(MixMatchController):
     defaults = dict(
-        data=dict(batch_size=dict(train=32, val=32, test=32), inputs=dict(inputs='images'), shuffle=True, skip_last_batch=False),
+        data=dict(batch_size=dict(train=32, val=32, test=64), inputs=dict(inputs='images'), shuffle=True, skip_last_batch=False),
         train=dict(save_on_lowest=None, epochs=500, archive_every=None),
-        optimizer=dict(optimizer='Adam', learning_rate=0.03, single_optimizer=True)
+        optimizer=dict(optimizer='SGD', learning_rate=0.03, single_optimizer=True,
+                       optimizer_options=dict(momentum=0.9, nesterov=True),
+                       scheduler='LambdaLR',
+                       scheduler_options=dict(lr_lambda=CosineLRPolicy(0, 500), last_epoch=-1))
     )
 
     def routine(self, threshold=0.7, lambda_u=5.0, *args, **kwargs):
@@ -95,8 +98,16 @@ class FixMatchController(MixMatchController):
         self.data.next()
         input_shape = self.get_dims('data.images')
 
-        self.nets.classifier = WideResNet_50_2(num_classes=self.get_dims('data.targets'), pretrained=False)
-        self.nets.ema_classifier = WideResNet_50_2(num_classes=self.get_dims('data.targets'), pretrained=False)
+        classifier = WideResNet_50_2(num_classes=self.get_dims('data.targets'), pretrained=False)
+        ema_classifier = WideResNet_50_2(num_classes=self.get_dims('data.targets'), pretrained=False)
+        if torch.cuda.device_count() > 1:
+            print("Let's use", torch.cuda.device_count(), "GPUs!")
+            exp.DEVICE_IDS = [i for i in range(torch.cuda.device_count())]
+            self.nets.classifier = DataParallel(classifier)
+            self.nets.ema_classifier = DataParallel(ema_classifier)
+        else:
+            self.nets.classifier = classifier
+            self.nets.ema_classifier = ema_classifier
         print(summary(self.nets.classifier, input_shape))
 
         for param in self.nets.ema_classifier.parameters():
