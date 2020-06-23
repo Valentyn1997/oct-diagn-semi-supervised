@@ -119,7 +119,7 @@ class SSLDatasetPlugin(TorchvisionDatasetPlugin):
                # SSL
                n_labels: int = None,
                split_labelled_and_unlabelled: bool = False,
-               fix_match_transform = False,
+               fix_match_transform=False,
                labeled_only: bool = False,
                mu: int = None,
                # Preprocessing
