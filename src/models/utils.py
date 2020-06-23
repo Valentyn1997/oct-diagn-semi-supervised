@@ -185,7 +185,7 @@ def f1_score(outputs: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
         outputs = outputs.argmax(dim=1)
 
     tp = (targets * outputs).sum().to(torch.float32)
-    tn = ((1 - targets) * (1 - outputs)).sum().to(torch.float32)
+    # tn = ((1 - targets) * (1 - outputs)).sum().to(torch.float32)
     fp = ((1 - targets) * outputs).sum().to(torch.float32)
     fn = (targets * (1 - outputs)).sum().to(torch.float32)
 

@@ -39,4 +39,5 @@ if __name__ == '__main__':
 
         params_list = [('--' + k, str(v)) for k, v in params.items()]
         params_list = list(itertools.chain(*params_list))
-        call(['python3', f'{SRC_PATH}/models/full_supervised/main.py', '--run_hash', calculate_hash(params)] + sys.argv[1:] + params_list)
+        call(['python3', f'{SRC_PATH}/models/full_supervised/main.py', '--run_hash', calculate_hash(params)] +
+             sys.argv[1:] + params_list)
