@@ -20,4 +20,3 @@ class WideResNet_50_2(nn.Module):
 
     def forward(self, x):
         return self.wrn(x)
-

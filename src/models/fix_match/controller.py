@@ -42,7 +42,7 @@ class FixMatchController(MixMatchController):
             inputs_l = self.inputs('data_l.images')
             inputs_uw, inputs_us = self.inputs('data_u.images')
 
-            if exp.ARGS['data']['data']['mu']*inputs_l.shape[0] != inputs_uw.shape[0]:
+            if exp.ARGS['data']['data']['mu'] * inputs_l.shape[0] != inputs_uw.shape[0]:
                 raise StopIteration
 
             # Supervised loss
