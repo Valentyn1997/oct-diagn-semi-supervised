@@ -16,13 +16,11 @@ if __name__ == '__main__':
 
     mlflow.set_tracking_uri(MLFLOW_SSL_URI)
 
-    BASELINE_TOTAL_BATCHES = 12000  # 15000
-    N_EPOCHS = 2000  # 3000
+    BASELINE_TOTAL_BATCHES = 24000  # 30000
 
     params_dict = {
         'o.learning_rate': [0.03],
-        't.epochs': [N_EPOCHS],
-        'ema_decay': [0.0],  # 0.999
+        'ema_decay': [0.999],
         'data_args.mu': [4],
         'lambda_u': [5.0],
         'data_args.n_labels': [40, 100, 200, 800, 2000, 4000, 20000],
@@ -34,12 +32,10 @@ if __name__ == '__main__':
 
         # Recalculating number of epochs, so that training time will be the same for all the models
         # baseline - 2000 epochs for 200 labels: 12000 total_batches
-        batch_size_train = 32
+        batch_size_train = 16
         batches_per_epoch = params['data_args.n_labels'] // batch_size_train
-        epochs_ratio = BASELINE_TOTAL_BATCHES / (batches_per_epoch * N_EPOCHS)
-        params['t.epochs'] = round(params['t.epochs'] * epochs_ratio)
+        params['t.epochs'] = round(BASELINE_TOTAL_BATCHES / batches_per_epoch)
         params['early_stopping'] = dict(patience=params['t.epochs'], monitor='cross_entropy')
-        # params['early_stopping'] = None
 
         existing_runs = mlflow.search_runs(filter_string=f"params.run_hash = '{calculate_hash(params)}'",
                                            run_view_type=mlflow.tracking.client.ViewType.ACTIVE_ONLY,

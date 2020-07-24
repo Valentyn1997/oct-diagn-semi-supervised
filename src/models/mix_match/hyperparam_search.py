@@ -16,10 +16,10 @@ if __name__ == '__main__':
 
     search_dict = {
         'o.learning_rate': [0.01, 0.001],  # 0.01
-        't.epochs': [500],
-        'T': [0.25, 0.5, 0.75, 0.9],  # 0.75
+        't.epochs': [500, 1000],  # 1000
+        'T': [0.25, 0.5, 0.75, 0.9],  # 0.5
         'ema_decay': [0.9, 0.999],  # 0.999
-        'alpha': [0.25, 0.5, 0.75, 0.9],  # 0.5
+        'alpha': [0.25, 0.5, 0.75, 0.9],  # 0.9
         'lambda_u': [12.5, 25, 50, 100, 150]  # 25
     }
     search_list = [dict(zip(search_dict.keys(), values)) for values in itertools.product(*search_dict.values())]

@@ -19,8 +19,9 @@ class FixMatchController(MixMatchController):
         train=dict(save_on_lowest=None, epochs=500, archive_every=None),
         optimizer=dict(optimizer='SGD', learning_rate=0.03, single_optimizer=True,
                        optimizer_options=dict(momentum=0.9, nesterov=True),
-                       scheduler='LambdaLR',
-                       scheduler_options=dict(lr_lambda=CosineLRPolicy(0, 500), last_epoch=-1))
+                       # scheduler='LambdaLR',
+                       # scheduler_options=dict(lr_lambda=CosineLRPolicy(0, 500), last_epoch=-1)
+                       )
     )
 
     def routine(self, threshold=0.7, lambda_u=5.0, *args, **kwargs):

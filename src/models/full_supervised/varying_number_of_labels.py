@@ -19,7 +19,7 @@ if __name__ == '__main__':
         'o.weight_decay': [0.0, 0.0001],
         'freeze_layers': [True, False],
         't.epochs': [50],
-        'ema_decay': [0.],  # 0.999
+        'ema_decay': [0.0, 0.999],
         'data_args.n_labels': [40, 100, 200, 800, 2000, 4000, 20000],
     }
     params_list = [dict(zip(params_dict.keys(), values)) for values in itertools.product(*params_dict.values())]
@@ -28,7 +28,7 @@ if __name__ == '__main__':
         logger.info(f'================== Run {run_ind+1}/{len(params_list)} ==================')
 
         # Recalculating number of epochs
-        params['early_stopping'] = dict(patience=params['t.epochs'] // 2, monitor='cross_entropy')
+        params['early_stopping'] = dict(patience=params['t.epochs'], monitor='cross_entropy')
 
         existing_runs = mlflow.search_runs(filter_string=f"params.run_hash = '{calculate_hash(params)}'",
                                            run_view_type=mlflow.tracking.client.ViewType.ACTIVE_ONLY,
