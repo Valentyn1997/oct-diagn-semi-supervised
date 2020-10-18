@@ -3,6 +3,8 @@ oct-diagn-semi-supervised
 
 Semi-supervised classification of Retinal OCT images
 
+<img src="reports/figures/dataset_sample.png" alt="drawing" width="300"/>
+
 Project is based on:
 - [Cortex](https://github.com/rdevon/cortex) - wrapper around Pytorch
 - [MlFlow](https://mlflow.org/) - experiments tracking
