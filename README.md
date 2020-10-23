@@ -10,7 +10,7 @@ Project is based on:
 - [MlFlow](https://mlflow.org/) - experiments tracking
 
 ArXiv link: TODO
-Presentation: TODO
+Presentation: [KDAH-CIKM-2020-presentation.pdf](https://github.com/Valentyn1997/oct-diagn-semi-supervised/blob/master/reports/KDAH-CIKM-2020-presentation.pdf)
 
 Installation
 ------------
