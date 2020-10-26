@@ -9,7 +9,8 @@ Project is based on:
 - [Cortex](https://github.com/rdevon/cortex) - wrapper around Pytorch
 - [MlFlow](https://mlflow.org/) - experiments tracking
 
-ArXiv link: TODO
+ArXiv: [arxiv.org/abs/2010.12316](https://arxiv.org/abs/2010.12316)
+
 Presentation: [KDAH-CIKM-2020-presentation.pdf](https://github.com/Valentyn1997/oct-diagn-semi-supervised/blob/master/reports/KDAH-CIKM-2020-presentation.pdf)
 
 Installation
