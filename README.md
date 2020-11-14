@@ -1,6 +1,8 @@
 oct-diagn-semi-supervised
 ==============================
 
+[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/matching-the-clinical-reality-accurate-oct/retinal-oct-disease-classification-on-oct2017)](https://paperswithcode.com/sota/retinal-oct-disease-classification-on-oct2017?p=matching-the-clinical-reality-accurate-oct)
+
 Semi-supervised classification of Retinal OCT images
 
 <img src="reports/figures/dataset_sample.png" alt="drawing" width="800"/>
